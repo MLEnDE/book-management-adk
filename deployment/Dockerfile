@@ -12,4 +12,4 @@ ENV ADK_APP_DATA_DIR=/var/data/book_management
 
 EXPOSE 8080
 
-CMD ["python3", "book_management_adk/main.py"]
+CMD ["uvicorn", "book_management_adk.server:app", "--host", "0.0.0.0", "--port", "8080"]
