@@ -4,7 +4,7 @@
 apiVersion: agentbuilder.googleapis.com/v1alpha1
 kind: AgentEngineDeployment
 metadata:
-  name: book-management-concierge
+  name: sophisticated-book-management
   displayName: "ADK Sophisticated Book Management Concierge"
   project: "orbit-499212"
   location: "us-central1"
