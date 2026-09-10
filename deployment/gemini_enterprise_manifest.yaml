@@ -1,0 +1,79 @@
+# Gemini Enterprise / Vertex AI Agent Builder Deployment Manifest
+# Multi-Agent Book Management System Configuration
+
+apiVersion: agentbuilder.googleapis.com/v1alpha1
+kind: AgentEngineDeployment
+metadata:
+  name: book-management-concierge
+  displayName: "ADK Sophisticated Book Management Concierge"
+  project: "enterprise-gemini-bookclub-prod"
+  location: "us-central1"
+
+spec:
+  orchestrator:
+    agentClass: "MasterBookConciergeOrchestrator"
+    entryPoint: "book_management_adk.agents.orchestrator:MasterBookConciergeOrchestrator"
+    model: "projects/enterprise-gemini-bookclub-prod/locations/us-central1/publishers/google/models/gemini-1.5-pro"
+    environmentVariables:
+      - name: ADK_APP_DATA_DIR
+        value: "/var/data/book_management"
+      - name: LOG_LEVEL
+        value: "INFO"
+
+  subagents:
+    - name: GoodreadsSyncAgent
+      model: "gemini-1.5-flash"
+      maxConcurrency: 5
+      tools:
+        - name: "fetch_goodreads_tbr"
+        - name: "fetch_goodreads_groups"
+        - name: "update_goodreads_shelf"
+
+    - name: LibbyLibraryAgent
+      model: "gemini-1.5-flash"
+      maxConcurrency: 10
+      tools:
+        - name: "search_libby_availability"
+        - name: "place_libby_hold"
+
+    - name: KindleDealsAgent
+      model: "gemini-1.5-flash"
+      maxConcurrency: 5
+      tools:
+        - name: "check_kindle_deals"
+        - name: "evaluate_deal_threshold"
+        - name: "execute_kindle_deal_purchase"
+
+    - name: BookClubCoordinatorAgent
+      model: "gemini-1.5-pro"
+      maxConcurrency: 3
+      tools:
+        - name: "generate_discussion_prompts"
+        - name: "draft_group_discussion_post"
+        - name: "publish_goodreads_group_post"
+
+  hitlApprovalGate:
+    enabled: true
+    callbackWebhook: "https://book-concierge.internal.enterprise.google.com/api/v1/hitl/callback"
+    notificationChannel:
+      type: "CHAT_AND_EMAIL"
+      targetGroup: "user-reading-concierge-approvers"
+    riskThresholds:
+      low: "AUTO_NOTIFY"
+      medium: "REQUIRE_HUMAN_CONFIRMATION"
+      high: "REQUIRE_TWO_FACTOR_HUMAN_CONFIRMATION"
+
+  triggers:
+    - type: "CRON"
+      schedule: "0 8 * * *" # Daily at 8:00 AM
+      target: "run_full_workflow_cycle"
+      description: "Daily TBR sync, Kindle Deal scan, and Libby Hold status update"
+
+    - type: "PUBSUB"
+      topic: "projects/enterprise-gemini-bookclub-prod/topics/kindle-deal-alerts"
+      target: "scan_and_evaluate_deals"
+
+  scaling:
+    minReplicas: 1
+    maxReplicas: 5
+    cpuUtilizingTarget: 70
