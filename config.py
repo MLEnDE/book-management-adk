@@ -12,7 +12,10 @@ class ADKBookManagementConfig:
     
     DEFAULT_MODEL: str = "gemini-1.5-pro"  # Default Gemini model
     FAST_MODEL: str = "gemini-1.5-flash"   # Fast model for subagents
-    APP_DATA_DIR: str = os.path.expanduser("~/.gemini/antigravity-cli/book_management")
+    APP_DATA_DIR: str = os.environ.get(
+        "ADK_APP_DATA_DIR",
+        os.path.expanduser("~/.gemini/antigravity-cli/book_management")
+    )
     
     # Declarative Safety Policy Configuration
     SAFETY_POLICIES: List[str] = [

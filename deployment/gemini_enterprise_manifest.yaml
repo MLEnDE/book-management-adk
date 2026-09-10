@@ -6,14 +6,14 @@ kind: AgentEngineDeployment
 metadata:
   name: book-management-concierge
   displayName: "ADK Sophisticated Book Management Concierge"
-  project: "enterprise-gemini-bookclub-prod"
+  project: "orbit-499212"
   location: "us-central1"
 
 spec:
   orchestrator:
     agentClass: "MasterBookConciergeOrchestrator"
     entryPoint: "book_management_adk.agents.orchestrator:MasterBookConciergeOrchestrator"
-    model: "projects/enterprise-gemini-bookclub-prod/locations/us-central1/publishers/google/models/gemini-1.5-pro"
+    model: "projects/orbit-499212/locations/us-central1/publishers/google/models/gemini-1.5-pro"
     environmentVariables:
       - name: ADK_APP_DATA_DIR
         value: "/var/data/book_management"
@@ -70,7 +70,7 @@ spec:
       description: "Daily TBR sync, Kindle Deal scan, and Libby Hold status update"
 
     - type: "PUBSUB"
-      topic: "projects/enterprise-gemini-bookclub-prod/topics/kindle-deal-alerts"
+      topic: "projects/orbit-499212/topics/kindle-deal-alerts"
       target: "scan_and_evaluate_deals"
 
   scaling:

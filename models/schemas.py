@@ -5,7 +5,7 @@ Defines Pydantic contracts for inter-agent communication and structured outputs.
 
 from enum import Enum
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 
 
@@ -93,11 +93,11 @@ class ApprovalRequest(BaseModel):
     payload: Dict[str, Any] = Field(..., description="Action metadata and tool arguments")
     risk_level: RiskLevel = Field(default=RiskLevel.MEDIUM)
     auto_approved: bool = Field(False)
-    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class WorkflowReport(BaseModel):
-    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     goodreads_tbr_count: int = 0
     libby_holds_active: int = 0
     kindle_deals_found: int = 0
