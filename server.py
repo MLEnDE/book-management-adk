@@ -8,15 +8,31 @@ and Gemini Enterprise App Chat Interface (A2UI).
 import os
 import sys
 import json
+import uuid
+import logging
 
 # Ensure package directory is on Python path
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__) + "/.."))
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from typing import Dict, Any, List, Optional
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException, Body, Request
 from fastapi.responses import JSONResponse, FileResponse
+try:
+    from sse_starlette.sse import EventSourceResponse
+except ImportError:
+    from fastapi.responses import StreamingResponse
+    def EventSourceResponse(generator):
+        async def sse_gen():
+            async for item in generator:
+                if isinstance(item, dict) and "data" in item:
+                    yield f"data: {item['data']}\n\n"
+                else:
+                    yield f"data: {item}\n\n"
+        return StreamingResponse(sse_gen(), media_type="text/event-stream")
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger("book_management_server")
 
 from book_management_adk.agents.orchestrator import MasterBookConciergeOrchestrator
 from book_management_adk.agents.chat_engine import GeminiEnterpriseChatEngine
@@ -110,24 +126,142 @@ def get_chat_extension_manifest() -> Dict[str, Any]:
 
 # --- Gemini Enterprise Chat App & A2A Endpoints ---
 
+@app.get("/a2a/v1/message", tags=["Gemini Enterprise App"])
+def get_message_probe():
+    """Liveness probe for A2A messaging endpoint."""
+    return {
+        "status": "operational",
+        "protocol": "A2A JSON-RPC 2.0",
+        "supportedMethods": ["message/stream", "message/send"]
+    }
+
+
 @app.post("/a2a/v1/message", tags=["Gemini Enterprise App"])
 @app.post("/api/v1/chat", tags=["Gemini Enterprise App"])
-def handle_chat_message(payload: ChatMessageRequest) -> Dict[str, Any]:
+async def handle_chat_message(request: Request) -> Any:
     """
-    Primary endpoint for Gemini Enterprise Chat App.
-    Accepts natural language user input or slash commands, runs agent orchestration,
-    and returns conversational responses alongside declarative A2UI Material 3 surfaces.
+    Primary endpoint for Gemini Enterprise Chat App and A2A wire protocol.
+    Natively supports both:
+    1. A2A JSON-RPC 2.0 payloads (methods: 'message/stream' with SSE, 'message/send' with JSONResponse).
+    2. Direct REST JSON payloads ({'message': '...', 'session_id': '...'}).
+    Returns conversational markdown and interactive Material 3 A2UI surfaces.
     """
-    return chat_engine.handle_user_message(payload.message, payload.session_id)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    is_jsonrpc = isinstance(body, dict) and body.get("jsonrpc") == "2.0"
+
+    if is_jsonrpc:
+        req_id = body.get("id")
+        method = body.get("method", "message/stream")
+        params = body.get("params", {})
+        msg = params.get("message", {}) if isinstance(params, dict) else {}
+
+        # Extract text from parts array or params/body
+        parts = msg.get("parts", []) if isinstance(msg, dict) else []
+        text_chunks = []
+        for p in parts:
+            if isinstance(p, dict) and "text" in p and p["text"]:
+                text_chunks.append(str(p["text"]))
+            elif isinstance(p, str):
+                text_chunks.append(p)
+
+        user_message = " ".join(text_chunks).strip()
+        if not user_message:
+            if isinstance(params, dict):
+                user_message = params.get("text", "")
+            if not user_message and isinstance(body, dict):
+                user_message = body.get("message", "")
+
+        session_id = None
+        if isinstance(msg, dict):
+            session_id = msg.get("contextId") or msg.get("context_id")
+        if not session_id and isinstance(params, dict):
+            session_id = params.get("session_id") or params.get("context_id")
+        if not session_id and isinstance(body, dict):
+            session_id = body.get("session_id")
+
+        logger.info("Received A2A JSON-RPC request [method=%s, id=%s]: '%s'", method, req_id, user_message)
+
+        try:
+            engine_res = chat_engine.handle_user_message(user_message, session_id=session_id)
+        except Exception as e:
+            logger.exception("Error executing agent for query: %s", e)
+            engine_res = {
+                "text": f"I encountered an error retrieving book data: {str(e)}",
+                "a2ui_surfaces": []
+            }
+
+        resp_msg_id = str(uuid.uuid4())
+        response_payload = {
+            "id": req_id,
+            "jsonrpc": "2.0",
+            "result": {
+                "kind": "message",
+                "role": "agent",
+                "messageId": resp_msg_id,
+                "parts": [
+                    {
+                        "kind": "text",
+                        "text": engine_res["text"]
+                    }
+                ],
+                "metadata": {
+                    "a2ui_surfaces": engine_res.get("a2ui_surfaces", [])
+                }
+            }
+        }
+
+        if method == "message/stream":
+            async def event_generator():
+                yield {"data": json.dumps(response_payload)}
+            return EventSourceResponse(event_generator())
+        else:
+            return JSONResponse(content=response_payload)
+
+    # Fallback to direct REST API
+    user_message = body.get("message", "") if isinstance(body, dict) else ""
+    session_id = body.get("session_id") if isinstance(body, dict) else None
+    return chat_engine.handle_user_message(user_message, session_id=session_id)
 
 
 @app.post("/a2a/v1/action", tags=["Gemini Enterprise App"])
-def handle_ui_action(payload: A2UIActionEvent) -> Dict[str, Any]:
+async def handle_ui_action(request: Request) -> Any:
     """
     Handles deterministic button click actions from A2UI interactive confirmation cards
     directly inside the Gemini Enterprise Chat interface (HITL approval resolution).
+    Supports both JSON-RPC 2.0 and direct REST POSTs.
     """
-    return chat_engine.handle_a2ui_action(payload.action_id, payload.params)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    is_jsonrpc = isinstance(body, dict) and body.get("jsonrpc") == "2.0"
+
+    if is_jsonrpc:
+        req_id = body.get("id")
+        params = body.get("params", {}) if isinstance(body, dict) else {}
+        action_id = (params.get("action_id") or params.get("actionId") or body.get("action_id", ""))
+        action_params = params.get("params", {})
+        res = chat_engine.handle_a2ui_action(action_id, action_params)
+        return JSONResponse(content={
+            "id": req_id,
+            "jsonrpc": "2.0",
+            "result": {
+                "kind": "message",
+                "role": "agent",
+                "messageId": str(uuid.uuid4()),
+                "parts": [{"kind": "text", "text": res.get("text", "Action processed.")}],
+                "metadata": res
+            }
+        })
+
+    action_id = body.get("action_id", "") if isinstance(body, dict) else ""
+    action_params = body.get("params", {}) if isinstance(body, dict) else {}
+    return chat_engine.handle_a2ui_action(action_id, action_params)
 
 
 # --- Orchestration Endpoints ---
