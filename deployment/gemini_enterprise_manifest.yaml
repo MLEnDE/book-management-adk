@@ -1,5 +1,5 @@
-# Gemini Enterprise / Vertex AI Agent Builder Deployment Manifest
-# Multi-Agent Book Management System Configuration
+# Gemini Enterprise Agent Platform - Full Enterprise Stack Manifest
+# Manages: Containerized Agent Runtime Deployment, Central Agent Registry Registration, & Chat App Client Exposure
 
 apiVersion: agentbuilder.googleapis.com/v1alpha1
 kind: AgentEngineDeployment
@@ -8,8 +8,83 @@ metadata:
   displayName: "ADK Sophisticated Book Management Concierge"
   project: "orbit-499212"
   location: "us-central1"
+  annotations:
+    registry.gke.io/functional-type: "AGENT"
+    apphub.googleapis.com/business-service: "Personal Reading Automation"
+    apphub.googleapis.com/criticality: "BUSINESS_LOW"
+    apphub.googleapis.com/environment: "DEVELOPMENT"
 
 spec:
+  # ============================================================================
+  # 1. AGENT RUNTIME SPECIFICATION (Deploy / Scale)
+  # ============================================================================
+  runtime:
+    type: "MANAGED_AGENT_RUNTIME"
+    container:
+      image: "us-central1-docker.pkg.dev/orbit-499212/agents/sophisticated-book-management:v1.0.0"
+      ports:
+        - containerPort: 8080
+          name: http
+      resources:
+        requests:
+          cpu: "1000m"
+          memory: "1Gi"
+        limits:
+          cpu: "2000m"
+          memory: "2Gi"
+      livenessProbe:
+        httpGet:
+          path: /healthz
+          port: 8080
+        initialDelaySeconds: 10
+        periodSeconds: 15
+      readinessProbe:
+        httpGet:
+          path: /readyz
+          port: 8080
+        initialDelaySeconds: 5
+        periodSeconds: 10
+
+    security:
+      spiffeId: "spiffe://orbit-499212.iam.gserviceaccount.com/agent/sophisticated-book-management"
+      serviceAccount: "agent-runner@orbit-499212.iam.gserviceaccount.com"
+      runAsNonRoot: true
+      runAsUser: 10001
+
+    sessionStore:
+      type: "AGENT_SESSIONS_MANAGED"
+      ttlMinutes: 1440 # 24 hours retention for conversational continuity
+
+  # ============================================================================
+  # 2. CENTRAL AGENT REGISTRY SPECIFICATION (Govern & Discovery)
+  # ============================================================================
+  registry:
+    targetRegistry: "projects/orbit-499212/locations/global/agentRegistries/enterprise-default"
+    agentCardPath: "book_management_adk/deployment/agent-card.json"
+    registrationMode: "DEPLOY_TO_REGISTER"
+    discoveryScope: "ORGANIZATION_WIDE"
+    gateway:
+      modelArmorEnabled: true # Model Armor prompt injection & data leakage safeguards
+      rateLimitRequestsPerMin: 120
+
+  # ============================================================================
+  # 3. GEMINI ENTERPRISE APP CLIENT EXPOSURE (Present / A2UI)
+  # ============================================================================
+  clientExposure:
+    chatAppExtension:
+      manifestPath: "book_management_adk/deployment/gemini_enterprise_chat_extension.json"
+      enableA2UI: true
+      uiCatalog: "google-material-3"
+      protocols:
+        - "A2A-v1.0"
+        - "A2UI-v0.9"
+      interactiveCards:
+        hitlApprovals: true
+        liveStatusBadges: true
+
+  # ============================================================================
+  # 4. ORCHESTRATOR & SUBAGENTS CONFIGURATION
+  # ============================================================================
   orchestrator:
     agentClass: "MasterBookConciergeOrchestrator"
     entryPoint: "book_management_adk.agents.orchestrator:MasterBookConciergeOrchestrator"
@@ -19,6 +94,8 @@ spec:
         value: "/var/data/book_management"
       - name: LOG_LEVEL
         value: "INFO"
+      - name: PORT
+        value: "8080"
 
   subagents:
     - name: GoodreadsSyncAgent
@@ -52,17 +129,23 @@ spec:
         - name: "draft_group_discussion_post"
         - name: "publish_goodreads_group_post"
 
+  # ============================================================================
+  # 5. HUMAN-IN-THE-LOOP (HITL) GOVERNANCE
+  # ============================================================================
   hitlApprovalGate:
     enabled: true
-    callbackWebhook: "https://book-concierge.internal.enterprise.google.com/api/v1/hitl/callback"
+    callbackWebhook: "https://book-management-concierge-orbit-499212.a.run.app/a2a/v1/action"
     notificationChannel:
-      type: "CHAT_AND_EMAIL"
+      type: "CHAT_INTERACTIVE_CARD"
       targetGroup: "user-reading-concierge-approvers"
     riskThresholds:
       low: "AUTO_NOTIFY"
       medium: "REQUIRE_HUMAN_CONFIRMATION"
       high: "REQUIRE_TWO_FACTOR_HUMAN_CONFIRMATION"
 
+  # ============================================================================
+  # 6. WORKFLOW TRIGGERS & SCALING
+  # ============================================================================
   triggers:
     - type: "CRON"
       schedule: "0 8 * * *" # Daily at 8:00 AM

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://enterprise.google.com/schemas/gemini-app-extension-v1.json",
+  "manifestVersion": "1.0",
+  "extensionId": "com.google.enterprise.agent.book-management-concierge",
+  "displayName": "Book Management Concierge",
+  "shortDescription": "Personal reading assistant for Goodreads, Libby library holds, Kindle deals & book clubs.",
+  "category": "Productivity & Personal Assistant",
+  "icon": "book_2",
+  "version": "1.0.0",
+  "agentUrn": "urn:google:agent:orbit-499212:us-central1:sophisticated-book-management",
+  "chatInterfaceConfig": {
+    "supportedProtocols": ["A2A-v1.0", "A2UI-v0.9"],
+    "streamingEnabled": true,
+    "interactiveCardsEnabled": true,
+    "uiCatalog": "google-material-3",
+    "endpoints": {
+      "message": "/a2a/v1/message",
+      "messageStream": "/a2a/v1/message/stream",
+      "actionCallback": "/a2a/v1/action"
+    },
+    "slashCommands": [
+      {
+        "command": "/sync",
+        "description": "Trigger a complete multi-agent reading cycle across all services"
+      },
+      {
+        "command": "/deals",
+        "description": "Scan Kindle price drops for books on your TBR list"
+      },
+      {
+        "command": "/holds",
+        "description": "Check digital library availability and estimated wait times on Libby"
+      },
+      {
+        "command": "/bookclub",
+        "description": "View active book club readings and generate discussion questions"
+      },
+      {
+        "command": "/approvals",
+        "description": "View and manage pending Human-in-the-Loop action approvals"
+      }
+    ],
+    "suggestedPrompts": [
+      "Check my Goodreads TBR for Kindle deals today",
+      "Check Libby wait times for books on my reading list",
+      "Draft discussion questions for my next book club meeting",
+      "Run my complete daily reading concierge cycle",
+      "Show my pending approvals for library holds and purchases"
+    ]
+  },
+  "governance": {
+    "hitlEnforced": true,
+    "riskPolicies": {
+      "externalPurchases": "REQUIRE_HUMAN_CONFIRMATION",
+      "libraryHolds": "REQUIRE_HUMAN_CONFIRMATION",
+      "publicForumPosts": "REQUIRE_HUMAN_CONFIRMATION"
+    }
+  }
+}

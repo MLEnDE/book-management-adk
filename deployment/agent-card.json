@@ -1,0 +1,150 @@
+{
+  "$schema": "https://agentbuilder.googleapis.com/v1alpha1/schemas/agent-card-v1.json",
+  "protocolVersion": "1.0",
+  "name": "urn:google:agent:orbit-499212:us-central1:sophisticated-book-management",
+  "displayName": "ADK Sophisticated Book Management Concierge",
+  "description": "Enterprise multi-agent reading concierge that synchronizes Goodreads shelves, tracks Libby digital library holds with Kindle delivery, detects high-discount Amazon Kindle deals, and facilitates book club discussions with strict Human-In-The-Loop (HITL) approval governance.",
+  "version": "1.0.0",
+  "owner": "emilyjryan@google.com",
+  "project": "orbit-499212",
+  "location": "us-central1",
+  "spiffeId": "spiffe://orbit-499212.iam.gserviceaccount.com/agent/sophisticated-book-management",
+  "supportedInterfaces": [
+    {
+      "name": "HTTP+JSON",
+      "endpoint": "https://book-management-concierge-orbit-499212.a.run.app",
+      "openApiSpec": "/openapi.json"
+    },
+    {
+      "name": "A2A-v1.0",
+      "endpoint": "https://book-management-concierge-orbit-499212.a.run.app/a2a/v1/message",
+      "methods": ["POST", "STREAM"]
+    },
+    {
+      "name": "A2UI-v0.9",
+      "catalog": "google-material-3",
+      "actionEndpoint": "https://book-management-concierge-orbit-499212.a.run.app/a2a/v1/action"
+    }
+  ],
+  "skills": [
+    {
+      "id": "goodreads_sync",
+      "name": "Goodreads Shelf & Reading Tracker",
+      "description": "Retrieves Want-to-Read (TBR) books, syncs reading progress, and tracks active book club group memberships.",
+      "keywords": ["goodreads", "tbr", "reading list", "shelf", "books"],
+      "examples": [
+        "Show my Goodreads Want to Read list",
+        "Sync my Goodreads shelf",
+        "What books are on my reading list?"
+      ]
+    },
+    {
+      "id": "libby_library_ops",
+      "name": "Libby Digital Library Catalog & Holds",
+      "description": "Cross-references TBR titles across connected US library systems, calculates wait times, verifies Kindle direct delivery compatibility, and queues hold placements.",
+      "keywords": ["libby", "overdrive", "library", "borrow", "holds", "wait time"],
+      "examples": [
+        "Check Libby availability for Project Hail Mary",
+        "Place a library hold on Tomorrow and Tomorrow",
+        "What library books do I currently have on hold?"
+      ]
+    },
+    {
+      "id": "kindle_deals_radar",
+      "name": "Kindle Deals & Price Drop Monitor",
+      "description": "Monitors Amazon Kindle Daily and Monthly Deals matching user TBR lists, calculates discount thresholds (>50% or <=$2.99), and submits purchase recommendations.",
+      "keywords": ["kindle", "deals", "discount", "amazon", "price drop", "sale"],
+      "examples": [
+        "Are there any Kindle deals on my TBR list today?",
+        "Check price drops on my books",
+        "Show top discounts on my wishlist"
+      ]
+    },
+    {
+      "id": "bookclub_coordination",
+      "name": "Book Club Discussion Coordinator",
+      "description": "Tracks reading milestones across multiple book clubs, generates engaging thematic discussion prompts, and prepares forum drafts for human review.",
+      "keywords": ["book club", "discussion", "prompts", "questions", "meeting", "reading schedule"],
+      "examples": [
+        "Draft book club discussion questions for Demon Copperhead",
+        "What is our reading assignment this month?",
+        "Post a discussion thread for Modern Masterpieces"
+      ]
+    },
+    {
+      "id": "hitl_governance",
+      "name": "Human-In-The-Loop Safety Gate",
+      "description": "Enforces enterprise governance by classifying risk levels (LOW, MEDIUM, HIGH) and capturing explicit human confirmation via A2UI interactive cards before executing mutations.",
+      "keywords": ["approval", "safety", "hitl", "governance", "review", "confirm"],
+      "examples": [
+        "Show my pending approvals",
+        "Review pending Kindle purchases and Libby holds"
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "name": "fetch_goodreads_tbr",
+      "description": "Fetches books from user's Goodreads Want to Read shelf.",
+      "readOnlyHint": true,
+      "destructiveHint": false
+    },
+    {
+      "name": "fetch_goodreads_groups",
+      "description": "Fetches user's active Goodreads Book Clubs and current group picks.",
+      "readOnlyHint": true,
+      "destructiveHint": false
+    },
+    {
+      "name": "search_libby_availability",
+      "description": "Queries linked US library systems in Libby for digital Kindle edition availability and wait times.",
+      "readOnlyHint": true,
+      "destructiveHint": false
+    },
+    {
+      "name": "place_libby_hold",
+      "description": "Places a digital hold on Libby for a library book (Requires HITL approval).",
+      "readOnlyHint": false,
+      "destructiveHint": true
+    },
+    {
+      "name": "check_kindle_deals",
+      "description": "Scans Amazon Kindle Deals feed for discounted books matching user TBR list.",
+      "readOnlyHint": true,
+      "destructiveHint": false
+    },
+    {
+      "name": "execute_kindle_deal_purchase",
+      "description": "Executes 1-Click Amazon Kindle purchase for a book deal (Requires HITL approval).",
+      "readOnlyHint": false,
+      "destructiveHint": true
+    },
+    {
+      "name": "generate_discussion_prompts",
+      "description": "Generates thoughtful, engaging discussion prompts for a book club reading section.",
+      "readOnlyHint": true,
+      "destructiveHint": false
+    },
+    {
+      "name": "publish_goodreads_group_post",
+      "description": "Publishes approved discussion post to Goodreads Group forum (Requires HITL approval).",
+      "readOnlyHint": false,
+      "destructiveHint": true
+    }
+  ],
+  "registryMetadata": {
+    "functionalType": "AGENT",
+    "appHubProperties": {
+      "criticality": "BUSINESS_LOW",
+      "environment": "DEVELOPMENT",
+      "businessService": "Personal Reading Automation",
+      "discoveryScope": "ORGANIZATION_WIDE"
+    },
+    "labels": {
+      "registry.gke.io/functional-type": "AGENT",
+      "enterprise.google.com/agent-tier": "concierge",
+      "team": "emea-oce"
+    },
+    "tags": ["reading", "books", "productivity", "concierge", "gemini-enterprise", "adk"]
+  }
+}

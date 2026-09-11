@@ -1,20 +1,25 @@
 """
 FastAPI Server for ADK Multi-Agent Book Management System.
-Exposes endpoints for Gemini Enterprise OpenAPI Tools, Cloud Run deployment, and HITL approvals.
+Exposes endpoints for Gemini Enterprise OpenAPI Tools, Cloud Run deployment,
+Agent Runtime lifecycle probes, Central Agent Registry discovery (A2A),
+and Gemini Enterprise App Chat Interface (A2UI).
 """
 
 import os
 import sys
+import json
 
 # Ensure package directory is on Python path
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__) + "/.."))
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from typing import Dict, Any, List, Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Body
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, Field
 
 from book_management_adk.agents.orchestrator import MasterBookConciergeOrchestrator
+from book_management_adk.agents.chat_engine import GeminiEnterpriseChatEngine
 from book_management_adk.tools.hitl_tools import list_pending_approvals, resolve_approval_request
 from book_management_adk.tools.libby_tools import search_libby_availability, place_libby_hold
 from book_management_adk.tools.kindle_tools import check_kindle_deals, evaluate_deal_threshold
@@ -28,6 +33,10 @@ app = FastAPI(
 )
 
 orchestrator = MasterBookConciergeOrchestrator()
+chat_engine = GeminiEnterpriseChatEngine(orchestrator)
+
+AGENT_CARD_PATH = os.path.join(os.path.dirname(__file__), "deployment", "agent-card.json")
+CHAT_EXTENSION_PATH = os.path.join(os.path.dirname(__file__), "deployment", "gemini_enterprise_chat_extension.json")
 
 
 # --- Request/Response Models ---
@@ -48,12 +57,77 @@ class DiscussionPromptRequest(BaseModel):
     section: str = Field("Full Book", description="Assigned reading section or chapter range")
 
 
-# --- Health & Info ---
+class ChatMessageRequest(BaseModel):
+    message: str = Field(..., description="User query or slash command")
+    session_id: Optional[str] = Field(None, description="Session ID for conversation state")
 
-@app.get("/health", tags=["System"])
+
+class A2UIActionEvent(BaseModel):
+    action_id: str = Field(..., description="Action identifier triggered by UI click")
+    params: Dict[str, Any] = Field(default_factory=dict, description="Contextual parameters for action")
+
+
+# --- Agent Runtime Health & Discovery Probes ---
+
+@app.get("/health", tags=["Agent Runtime Probes"])
 def health_check():
-    """Health check endpoint for Cloud Run container liveness."""
+    """Health check endpoint for Cloud Run / Agent Runtime container liveness."""
     return {"status": "ok", "app": "book-management-adk", "project": "orbit-499212"}
+
+
+@app.get("/healthz", tags=["Agent Runtime Probes"])
+def healthz_probe():
+    """Kubernetes / Agent Runtime liveness probe."""
+    return {"status": "alive", "runtime": "google-agent-runtime-v1"}
+
+
+@app.get("/readyz", tags=["Agent Runtime Probes"])
+def readyz_probe():
+    """Kubernetes / Agent Runtime readiness probe."""
+    return {"status": "ready", "dependencies": "operational"}
+
+
+# --- Central Agent Registry Discovery (A2A Protocol) ---
+
+@app.get("/.well-known/agent-card.json", tags=["Agent Registry Discovery"])
+@app.get("/a2a/v1/agent-card", tags=["Agent Registry Discovery"])
+def get_agent_card() -> Dict[str, Any]:
+    """Returns the A2A v1.0 Agent Card for Central Agent Registry discovery and registration."""
+    if os.path.exists(AGENT_CARD_PATH):
+        with open(AGENT_CARD_PATH, "r") as f:
+            return json.load(f)
+    raise HTTPException(status_code=404, detail="Agent Card not found.")
+
+
+@app.get("/api/v1/chat/extension-manifest", tags=["Gemini Enterprise App"])
+def get_chat_extension_manifest() -> Dict[str, Any]:
+    """Returns Gemini Enterprise Chat App Extension manifest."""
+    if os.path.exists(CHAT_EXTENSION_PATH):
+        with open(CHAT_EXTENSION_PATH, "r") as f:
+            return json.load(f)
+    raise HTTPException(status_code=404, detail="Extension manifest not found.")
+
+
+# --- Gemini Enterprise Chat App & A2A Endpoints ---
+
+@app.post("/a2a/v1/message", tags=["Gemini Enterprise App"])
+@app.post("/api/v1/chat", tags=["Gemini Enterprise App"])
+def handle_chat_message(payload: ChatMessageRequest) -> Dict[str, Any]:
+    """
+    Primary endpoint for Gemini Enterprise Chat App.
+    Accepts natural language user input or slash commands, runs agent orchestration,
+    and returns conversational responses alongside declarative A2UI Material 3 surfaces.
+    """
+    return chat_engine.handle_user_message(payload.message, payload.session_id)
+
+
+@app.post("/a2a/v1/action", tags=["Gemini Enterprise App"])
+def handle_ui_action(payload: A2UIActionEvent) -> Dict[str, Any]:
+    """
+    Handles deterministic button click actions from A2UI interactive confirmation cards
+    directly inside the Gemini Enterprise Chat interface (HITL approval resolution).
+    """
+    return chat_engine.handle_a2ui_action(payload.action_id, payload.params)
 
 
 # --- Orchestration Endpoints ---
