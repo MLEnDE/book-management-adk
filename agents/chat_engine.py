@@ -7,7 +7,11 @@ into multi-agent orchestrations, returning text and declarative A2UI Material 3 
 from typing import Dict, Any, List, Optional
 from book_management_adk.agents.orchestrator import MasterBookConciergeOrchestrator
 from book_management_adk.tools.hitl_tools import list_pending_approvals
-from book_management_adk.tools.goodreads_tools import fetch_goodreads_tbr, fetch_goodreads_groups
+from book_management_adk.tools.goodreads_tools import (
+    fetch_goodreads_tbr,
+    fetch_goodreads_groups,
+    fetch_goodreads_currently_reading
+)
 from book_management_adk.models.a2ui_schemas import (
     A2UISurface,
     build_hitl_approval_card,
@@ -62,7 +66,7 @@ class GeminiEnterpriseChatEngine:
         elif msg_clean.startswith("/deals") or "kindle" in msg_clean or "deal" in msg_clean or "price drop" in msg_clean:
             tbr = fetch_goodreads_tbr()
             isbns = [b["isbn"] for b in tbr if "isbn" in b]
-            res = self.orchestrator.kindle_agent.scan_and_evaluate_deals(isbns)
+            res = self.orchestrator.kindle_agent.scan_and_evaluate_deals(isbns, tbr_books=tbr)
 
             deals = res.get("evaluated_deals", [])
             approvals = res.get("approval_requests", [])
@@ -162,12 +166,44 @@ class GeminiEnterpriseChatEngine:
                 "protocol": "A2UI-v0.9"
             }
 
-        # 6. Default / Welcome Assistance
+        # 6. Goodreads Shelves & Current Reading
+        elif (
+            msg_clean.startswith("/shelf")
+            or msg_clean.startswith("/goodreads")
+            or "currently reading" in msg_clean
+            or "tbr" in msg_clean
+            or "want to read" in msg_clean
+            or "my books" in msg_clean
+            or "reading list" in msg_clean
+        ):
+            cr_books = fetch_goodreads_currently_reading(limit=5)
+            tbr_books = fetch_goodreads_tbr(limit=5)
+            
+            response_text = "### 📖 Emily's Live Goodreads Library\n\n"
+            response_text += f"**Currently Reading ({len(cr_books)} in progress):**\n"
+            for b in cr_books:
+                response_text += f"- **{b['title']}** by {b['author']}\n"
+            
+            response_text += f"\n**Up Next on Want-to-Read (TBR Shelf):**\n"
+            for b in tbr_books:
+                response_text += f"- **{b['title']}** by {b['author']}\n"
+            
+            response_text += "\n*💡 Tip: Use `/deals` to check Kindle price drops on these books or `/holds` to query Libby library availability.*"
+            
+            return {
+                "text": response_text,
+                "a2ui_surfaces": surfaces,
+                "session_id": session_id,
+                "protocol": "A2UI-v0.9"
+            }
+
+        # 7. Default / Welcome Assistance
         else:
             response_text = (
                 "### 👋 Welcome to your ADK Book Management Concierge!\n\n"
                 "I coordinate your reading ecosystem across Goodreads, Libby, and Amazon Kindle Deals.\n\n"
                 "**Quick Commands & Suggested Prompts:**\n"
+                "- `/shelf` — View your live Goodreads currently-reading & Want-to-Read shelves\n"
                 "- `/sync` — Run complete multi-agent discovery and sync\n"
                 "- `/deals` — Scan Kindle price drops for your TBR list\n"
                 "- `/holds` — Check Libby library availability & wait times\n"

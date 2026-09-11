@@ -50,7 +50,7 @@ class MasterBookConciergeOrchestrator:
         
         # Step 3: Delegate to Kindle Deals Agent
         tbr_isbns = [b["isbn"] for b in tbr_books if "isbn" in b]
-        kindle_results = self.kindle_agent.scan_and_evaluate_deals(tbr_isbns)
+        kindle_results = self.kindle_agent.scan_and_evaluate_deals(tbr_isbns, tbr_books=tbr_books)
         
         # Step 4: Delegate to Book Club Coordinator Agent
         bookclub_results = self.bookclub_agent.process_group_discussions(groups)

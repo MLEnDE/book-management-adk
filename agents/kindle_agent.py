@@ -3,7 +3,7 @@ Kindle Deals Subagent Definition for ADK Multi-Agent System.
 Specializes in tracking Amazon Kindle Deals, price drops, and submitting purchase recommendations.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from book_management_adk.tools.kindle_tools import check_kindle_deals, evaluate_deal_threshold
 from book_management_adk.tools.hitl_tools import request_human_approval
 from book_management_adk.models.schemas import ActionType, RiskLevel
@@ -21,12 +21,16 @@ class KindleAgent:
             "purchase recommendations for Human-In-The-Loop confirmation."
         )
 
-    def scan_and_evaluate_deals(self, tbr_isbns: List[str]) -> Dict[str, Any]:
+    def scan_and_evaluate_deals(
+        self,
+        tbr_isbns: List[str],
+        tbr_books: Optional[List[Dict[str, Any]]] = None
+    ) -> Dict[str, Any]:
         """Scans Kindle deals for books on the user's TBR list and evaluates discount thresholds."""
         global_metrics_hook.on_turn_start(self.name, 1, f"Scan Kindle deals for {len(tbr_isbns)} TBR ISBNs")
         
         global_metrics_hook.on_tool_call(self.name, "check_kindle_deals", {"tbr_isbns": tbr_isbns})
-        deals = check_kindle_deals(tbr_isbns=tbr_isbns)
+        deals = check_kindle_deals(tbr_isbns=tbr_isbns, tbr_books=tbr_books)
         
         evaluated_deals = []
         approval_requests = []
