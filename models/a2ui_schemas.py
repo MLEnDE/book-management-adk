@@ -83,6 +83,19 @@ def build_hitl_approval_card(req: Dict[str, Any]) -> A2UISurface:
                     type="Text",
                     props={"text": desc, "variant": "bodyMedium", "color": "secondary"}
                 ),
+                *(
+                    [
+                        A2UIComponent(
+                            id=f"link_{req_id}",
+                            type="Text",
+                            props={
+                                "text": f"🔗 **Secure Deal Website:** [View & Purchase on Amazon Kindle ↗]({deal_url})\nDirect URL: `{deal_url}`",
+                                "variant": "bodySmall",
+                                "color": "primary"
+                            }
+                        )
+                    ] if (deal_url := payload.get("deal_url") or payload.get("url") or req.get("metadata", {}).get("deal_url")) else []
+                ),
                 # Divider
                 A2UIComponent(id=f"div_{req_id}", type="Divider", props={}),
                 # Action Buttons Row
@@ -91,6 +104,20 @@ def build_hitl_approval_card(req: Dict[str, Any]) -> A2UISurface:
                     type="Row",
                     props={"justify": "flex-end", "gap": "small"},
                     children=[
+                        *(
+                            [
+                                A2UIComponent(
+                                    id=f"link_btn_{req_id}",
+                                    type="Button",
+                                    props={
+                                        "label": "Open Deal Site ↗",
+                                        "variant": "text",
+                                        "color": "primary",
+                                        "url": deal_url
+                                    }
+                                )
+                            ] if (deal_url := payload.get("deal_url") or payload.get("url") or req.get("metadata", {}).get("deal_url")) else []
+                        ),
                         A2UIComponent(
                             id=f"reject_btn_{req_id}",
                             type="Button",

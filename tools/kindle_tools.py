@@ -5,12 +5,18 @@ Monitors price drops, Daily/Monthly Kindle Deals, and checks user target price t
 
 from typing import List, Dict, Any, Optional
 
+import urllib.parse
+import re
+
 MOCK_KINDLE_DEALS_FEED = [
     {
         "deal_id": "kd_9921",
         "title": "Tomorrow, and Tomorrow, and Tomorrow",
         "author": "Gabrielle Zevin",
         "isbn": "9780593321201",
+        "asin": "B09KB9L4PV",
+        "deal_url": "https://www.amazon.com/dp/B09KB9L4PV",
+        "url": "https://www.amazon.com/dp/B09KB9L4PV",
         "list_price": 14.99,
         "deal_price": 2.99,
         "discount_percent": 80.0,
@@ -22,6 +28,9 @@ MOCK_KINDLE_DEALS_FEED = [
         "title": "Project Hail Mary",
         "author": "Andy Weir",
         "isbn": "9780593135204",
+        "asin": "B08FHBV4ZX",
+        "deal_url": "https://www.amazon.com/dp/B08FHBV4ZX",
+        "url": "https://www.amazon.com/dp/B08FHBV4ZX",
         "list_price": 16.99,
         "deal_price": 4.99,
         "discount_percent": 70.6,
@@ -33,6 +42,9 @@ MOCK_KINDLE_DEALS_FEED = [
         "title": "Klara and the Sun",
         "author": "Kazuo Ishiguro",
         "isbn": "9780593318171",
+        "asin": "B08H1G21D3",
+        "deal_url": "https://www.amazon.com/dp/B08H1G21D3",
+        "url": "https://www.amazon.com/dp/B08H1G21D3",
         "list_price": 13.99,
         "deal_price": 1.99,
         "discount_percent": 85.7,
@@ -40,6 +52,28 @@ MOCK_KINDLE_DEALS_FEED = [
         "expires_at": "2026-09-30T23:59:59Z"
     }
 ]
+
+
+def generate_amazon_kindle_url(
+    title: str,
+    author: str = "",
+    asin: Optional[str] = None,
+    isbn: Optional[str] = None
+) -> str:
+    """
+    Generates a secure HTTPS Amazon Kindle store URL for immediate purchase or deal viewing.
+    """
+    if asin:
+        return f"https://www.amazon.com/dp/{asin}"
+    if isbn:
+        clean_isbn = isbn.replace("-", "").strip()
+        if len(clean_isbn) in (10, 13) and clean_isbn.isalnum() and not clean_isbn.startswith("LIVE"):
+            return f"https://www.amazon.com/dp/{clean_isbn}"
+
+    clean_title = re.sub(r"\(.*?\)", "", title).strip()
+    query = f"{clean_title} {author} kindle edition".strip()
+    encoded = urllib.parse.quote_plus(query)
+    return f"https://www.amazon.com/s?k={encoded}&i=digital-text"
 
 
 def check_kindle_deals(
@@ -54,7 +88,7 @@ def check_kindle_deals(
         tbr_books: Optional list of book dictionaries containing title and author metadata.
         
     Returns:
-        List of matching Kindle deals with price drops, discount percentages, and deal tiers.
+        List of matching Kindle deals with price drops, discount percentages, deal tiers, and secure purchase URLs.
     """
     book_lookup = {b.get("isbn"): b for b in (tbr_books or []) if b.get("isbn")}
     
@@ -70,17 +104,31 @@ def check_kindle_deals(
                 book_meta = book_lookup.get(isbn, {})
                 title = book_meta.get("title", f"TBR Book ({isbn})")
                 author = book_meta.get("author", "Featured Author")
+                deal_url = generate_amazon_kindle_url(title=title, author=author, isbn=isbn)
                 matches.append({
                     "deal_id": f"kd_live_{idx+101}",
                     "title": title,
                     "author": author,
                     "isbn": isbn,
+                    "deal_url": deal_url,
+                    "url": deal_url,
                     "list_price": 14.99,
                     "deal_price": 2.99 if idx == 0 else 4.99,
                     "discount_percent": 80.0 if idx == 0 else 66.7,
                     "deal_tier": "Kindle Daily Deal" if idx == 0 else "Limited Time Discount",
                     "expires_at": "2026-09-12T23:59:59Z"
                 })
+
+    for deal in matches:
+        if not deal.get("deal_url"):
+            deal["deal_url"] = generate_amazon_kindle_url(
+                title=deal.get("title", ""),
+                author=deal.get("author", ""),
+                asin=deal.get("asin"),
+                isbn=deal.get("isbn")
+            )
+        deal["url"] = deal["deal_url"]
+
     return matches
 
 

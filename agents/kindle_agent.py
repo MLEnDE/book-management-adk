@@ -47,6 +47,7 @@ class KindleAgent:
             
             if eval_res["recommended"]:
                 title = d["title"]
+                deal_url = d.get("deal_url") or d.get("url", "")
                 req = request_human_approval(
                     action_type=ActionType.PURCHASE_KINDLE_DEAL,
                     title=f"Kindle Deal Recommendation: '{title}' (${deal_p:.2f})",
@@ -54,13 +55,16 @@ class KindleAgent:
                         f"Price drop on TBR book '{title}'! "
                         f"Original: ${list_p:.2f} ➡️ Now: ${deal_p:.2f} ({eval_res['discount_pct']}% OFF). "
                         f"Tier: {d['deal_tier']}. Expiration: {d.get('expires_at', 'Tonight')}."
+                        f"\nPurchase Link: {deal_url}"
                     ),
                     payload={
                         "deal_id": d["deal_id"],
                         "title": title,
                         "deal_price": deal_p,
                         "list_price": list_p,
-                        "discount_pct": eval_res["discount_pct"]
+                        "discount_pct": eval_res["discount_pct"],
+                        "deal_url": deal_url,
+                        "url": deal_url
                     },
                     risk_level=RiskLevel.MEDIUM
                 )

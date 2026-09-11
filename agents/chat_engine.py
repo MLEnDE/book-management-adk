@@ -4,6 +4,8 @@ Translates user conversational queries, slash commands, and interactive events
 into multi-agent orchestrations, returning text and declarative A2UI Material 3 surfaces.
 """
 
+import re
+import urllib.parse
 from typing import Dict, Any, List, Optional
 from book_management_adk.agents.orchestrator import MasterBookConciergeOrchestrator
 from book_management_adk.tools.hitl_tools import list_pending_approvals
@@ -12,6 +14,7 @@ from book_management_adk.tools.goodreads_tools import (
     fetch_goodreads_groups,
     fetch_goodreads_currently_reading
 )
+from book_management_adk.tools.kindle_tools import generate_amazon_kindle_url
 from book_management_adk.models.a2ui_schemas import (
     A2UISurface,
     build_hitl_approval_card,
@@ -62,8 +65,20 @@ class GeminiEnterpriseChatEngine:
                 "protocol": "A2UI-v0.9"
             }
 
-        # 2. Kindle Deals Radar
-        elif msg_clean.startswith("/deals") or "kindle" in msg_clean or "deal" in msg_clean or "price drop" in msg_clean:
+        # 2. Kindle Deals Radar & Secure Purchase Links
+        elif (
+            msg_clean.startswith("/deals")
+            or "deal" in msg_clean
+            or "discount" in msg_clean
+            or "price drop" in msg_clean
+            or "kindle" in msg_clean
+            or "link" in msg_clean
+            or "url" in msg_clean
+            or "buy" in msg_clean
+            or "purchase" in msg_clean
+            or "website" in msg_clean
+            or "where to buy" in msg_clean
+        ):
             tbr = fetch_goodreads_tbr()
             isbns = [b["isbn"] for b in tbr if "isbn" in b]
             res = self.orchestrator.kindle_agent.scan_and_evaluate_deals(isbns, tbr_books=tbr)
@@ -71,20 +86,77 @@ class GeminiEnterpriseChatEngine:
             deals = res.get("evaluated_deals", [])
             approvals = res.get("approval_requests", [])
 
+            # Check if user specifically asked for the link to a single book
+            is_link_query = any(k in msg_clean for k in ["link", "url", "buy", "purchase", "website", "where to buy", "how to buy"])
+            matched_book = None
+            if is_link_query:
+                all_known_books = list(deals) + list(tbr) + fetch_goodreads_currently_reading()
+                for b in all_known_books:
+                    title = b.get("title", "")
+                    clean_title = re.sub(r"\(.*?\)", "", title).strip().lower()
+                    short_title = clean_title.split(":")[0].strip()
+                    if (short_title and len(short_title) > 3 and short_title in msg_clean) or (clean_title and clean_title in msg_clean):
+                        matched_book = b
+                        break
+
+            if matched_book and is_link_query:
+                title = matched_book.get("title", "")
+                author = matched_book.get("author", "")
+                deal_url = (
+                    matched_book.get("deal_url")
+                    or matched_book.get("url")
+                    or generate_amazon_kindle_url(title, author, asin=matched_book.get("asin"), isbn=matched_book.get("isbn"))
+                )
+                deal_price = matched_book.get("deal_price")
+                list_price = matched_book.get("list_price")
+
+                response_text = f"### 🔗 Secure Purchase Link: *{title}*\n\n"
+                response_text += f"- **Book:** **{title}** by {author}\n"
+                if deal_price and list_price:
+                    response_text += f"- **Deal Price:** ~~${list_price:.2f}~~ ➡️ **${deal_price:.2f}** (`{matched_book.get('discount_percent', 0)}% OFF`)\n"
+                response_text += (
+                    f"- **Direct Purchase Website:** [Buy on Amazon Kindle ↗]({deal_url})\n"
+                    f"- **Secure HTTPS URL:** `{deal_url}`\n\n"
+                    f"🔒 *All transactions are securely handled through Amazon's official retail platform.*"
+                )
+
+                for req in approvals:
+                    if title.lower() in req.get("title", "").lower():
+                        card = build_hitl_approval_card(req)
+                        surfaces.append(card.model_dump())
+
+                return {
+                    "text": response_text,
+                    "a2ui_surfaces": surfaces,
+                    "session_id": session_id,
+                    "protocol": "A2UI-v0.9"
+                }
+
+            # Otherwise, render full deals list with direct purchase links
             for req in approvals:
                 card = build_hitl_approval_card(req)
                 surfaces.append(card.model_dump())
 
-            response_text = f"### 🏷️ Kindle Deals Radar\n\nFound **{len(deals)}** active discounts matching your Goodreads TBR list:\n\n"
-            for d in deals:
+            response_text = f"### 🏷️ Amazon Kindle Deals & Secure Purchase Links\n\n"
+            response_text += f"Found **{len(deals)}** active discounts matching your Goodreads Want-to-Read (TBR) list:\n\n"
+            for idx, d in enumerate(deals, 1):
+                deal_url = d.get("deal_url") or d.get("url") or generate_amazon_kindle_url(d["title"], d.get("author", ""), isbn=d.get("isbn"))
+                expires = d.get("expires_at", "Tonight")
+                if "T" in str(expires):
+                    expires = str(expires).split("T")[0]
+
                 response_text += (
-                    f"- **{d['title']}** by {d['author']}: "
-                    f"~~${d['list_price']:.2f}~~ ➡️ **${d['deal_price']:.2f}** "
+                    f"#### {idx}. [{d['title']}]({deal_url})\n"
+                    f"- **Author:** {d['author']}\n"
+                    f"- **Deal Price:** ~~${d['list_price']:.2f}~~ ➡️ **${d['deal_price']:.2f}** "
                     f"(`{d['discount_percent']}% OFF` | {d['deal_tier']})\n"
+                    f"- **Expiration:** {expires}\n"
+                    f"- **Secure Purchase Site:** [Buy on Amazon Kindle ↗]({deal_url})\n"
+                    f"- **Direct URL:** `{deal_url}`\n\n"
                 )
 
             if approvals:
-                response_text += f"\n💡 *I've queued {len(approvals)} recommended purchases for your approval below.*"
+                response_text += "💡 *You can purchase immediately using the secure Amazon links above, or confirm through the approval cards below.*"
 
             return {
                 "text": response_text,
@@ -182,13 +254,15 @@ class GeminiEnterpriseChatEngine:
             response_text = "### 📖 Emily's Live Goodreads Library\n\n"
             response_text += f"**Currently Reading ({len(cr_books)} in progress):**\n"
             for b in cr_books:
-                response_text += f"- **{b['title']}** by {b['author']}\n"
+                book_url = generate_amazon_kindle_url(b['title'], b.get('author', ''), isbn=b.get('isbn'))
+                response_text += f"- **[{b['title']}]({book_url})** by {b['author']}\n"
             
             response_text += f"\n**Up Next on Want-to-Read (TBR Shelf):**\n"
             for b in tbr_books:
-                response_text += f"- **{b['title']}** by {b['author']}\n"
+                book_url = generate_amazon_kindle_url(b['title'], b.get('author', ''), isbn=b.get('isbn'))
+                response_text += f"- **[{b['title']}]({book_url})** by {b['author']}\n"
             
-            response_text += "\n*💡 Tip: Use `/deals` to check Kindle price drops on these books or `/holds` to query Libby library availability.*"
+            response_text += "\n*💡 Tip: Use `/deals` to check Kindle price drops with secure purchase links or `/holds` to query Libby library availability.*"
             
             return {
                 "text": response_text,
