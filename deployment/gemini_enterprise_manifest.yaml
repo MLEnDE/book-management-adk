@@ -134,7 +134,7 @@ spec:
   # ============================================================================
   hitlApprovalGate:
     enabled: true
-    callbackWebhook: "https://book-management-concierge-orbit-499212.a.run.app/a2a/v1/action"
+    callbackWebhook: "https://book-management-adk-98835120191.us-central1.run.app/a2a/v1/action"
     notificationChannel:
       type: "CHAT_INTERACTIVE_CARD"
       targetGroup: "user-reading-concierge-approvers"
